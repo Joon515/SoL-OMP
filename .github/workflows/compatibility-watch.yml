@@ -1,0 +1,29 @@
+name: Compatibility watch
+
+on:
+  schedule:
+    - cron: "17 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: compatibility-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    name: Check SoL-Pi and OMP updates
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out reviewed monitor code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Detect updates and notify maintainer
+        env:
+          COMPAT_WATCH_NOTIFY: "1"
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/check-compatibility-watch.mjs

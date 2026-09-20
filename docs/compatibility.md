@@ -72,6 +72,14 @@ The `cacheWriteReadRatio` value is read from `sol-omp.json` and remains fixed fo
 
 The savings treatment uses public OMP 18.2.6 rendering, notification, and status APIs. It activates only in TUI mode. It does not alter stored messages, provider requests, tool results, JSON events, print output, or RPC UI requests.
 
+## GitHub compatibility monitoring
+
+The repository's `Compatibility watch` GitHub Actions workflow runs daily and can also be started manually. It executes only on a GitHub-hosted runner; it is not installed with the plugin and never runs on an OMP user's machine.
+
+The workflow reads public metadata for `NVlabs/SoL-Pi` and the canonical `@oh-my-pi/*` npm package family. It opens or updates one tracking issue when the reviewed SoL-Pi commit changes, when npm publishes a newer OMP major, or when the OMP package family reports inconsistent latest majors. The workflow does not download or execute unreviewed upstream code.
+
+The reviewed upstream commit and monitored package list live in [`.github/compatibility-watch.json`](../.github/compatibility-watch.json). After completing a compatibility review, update that file and the pinned OMP package versions as applicable, run `bun run check` and `bun run compat`, then close the tracking issue.
+
 ## Upstream relationship
 
 SoL-OMP is derived from the MIT-licensed [NVlabs/SoL-Pi](https://github.com/NVlabs/SoL-Pi) research project and retains its NVIDIA copyright and attribution. This OMP port is community-maintained; NVIDIA does not maintain or endorse this fork. The associated paper remains available at [arXiv:2609.20519](https://arxiv.org/abs/2609.20519).

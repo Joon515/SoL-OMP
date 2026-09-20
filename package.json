@@ -11,6 +11,7 @@
 		"docs/configuration.md",
 		"scripts/check-sol-omp-config.mjs",
 		"scripts/check-sol-omp-compat.mjs",
+		"scripts/check-compatibility-watch.mjs",
 		"agents-install.md",
 		"README.md",
 		"LICENSE",
@@ -23,7 +24,8 @@
 		"test": "vitest run",
 		"typecheck": "tsc --noEmit",
 		"check": "bun run typecheck && bun test && bun pm pack --dry-run",
-		"compat": "bun scripts/check-sol-omp-compat.mjs"
+		"compat": "bun scripts/check-sol-omp-compat.mjs",
+		"compat:watch": "node scripts/check-compatibility-watch.mjs"
 	},
 	"keywords": [
 		"omp-package",

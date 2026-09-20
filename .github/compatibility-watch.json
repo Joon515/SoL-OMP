@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "upstream": {
+    "repository": "NVlabs/SoL-Pi",
+    "ref": "main",
+    "lastReviewedSha": "bd005888b9b8a3fcdb511feb91fc27d3dfa8f2b1"
+  },
+  "ompPackages": [
+    "@oh-my-pi/pi-agent-core",
+    "@oh-my-pi/pi-ai",
+    "@oh-my-pi/pi-coding-agent",
+    "@oh-my-pi/pi-tui"
+  ]
+}
