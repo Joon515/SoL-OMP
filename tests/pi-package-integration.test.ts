@@ -5,95 +5,126 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createMockModel, streamMock } from "@oh-my-pi/pi-ai/providers/mock";
 import {
-	CONFIG_DIR_NAME,
 	createAgentSession,
-	DefaultResourceLoader,
 	SessionManager,
-	SettingsManager,
+	Settings,
 	type AgentSession,
-} from "@earendil-works/pi-coding-agent";
-import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
+	type ExtensionFactory,
+} from "@oh-my-pi/pi-coding-agent";
+import { initializeExtensions } from "@oh-my-pi/pi-coding-agent/modes/runtime-init";
+import { CONFIG_DIR_NAME } from "@oh-my-pi/pi-utils/dirs";
 import { expect, it } from "vitest";
-import { DEFAULT_CONFIG } from "../src/sol-pi/config.ts";
+import { DEFAULT_CONFIG } from "../src/sol-omp/config.ts";
 
-it("loads the package entrypoint and executes fused tools in an all-enabled Pi session", async () => {
-	const cwd = await mkdtemp(join(tmpdir(), "sol-pi-package-"));
+it("loads the package entrypoint and executes fused tools in an all-enabled OMP session", async () => {
+	const cwd = await mkdtemp(join(tmpdir(), "sol-omp-package-"));
 	const agentDir = join(cwd, "agent");
 	let session: AgentSession | undefined;
 	try {
 		await mkdir(agentDir);
 		await mkdir(join(cwd, CONFIG_DIR_NAME));
-		await writeFile(join(cwd, CONFIG_DIR_NAME, "sol-pi.json"), JSON.stringify({
+		await writeFile(join(cwd, CONFIG_DIR_NAME, "sol-omp.json"), JSON.stringify({
 			...DEFAULT_CONFIG,
 			actionFusion: true,
 			observationPack: true,
 			evidencePreservingReducer: true,
 			onlineContextCompact: true,
 		}));
-		const faux = fauxProvider({ provider: "sol-pi-package-test", api: "sol-pi-package-test-api" });
-		faux.setResponses([
-			fauxAssistantMessage(fauxToolCall("write", {
-				path: "result.txt",
-				content: "package integration passed\n",
-				then_run: { command: "cat result.txt" },
-			}), { stopReason: "toolUse" }),
-			fauxAssistantMessage(fauxToolCall("update_plan", {
-				steps: [{ id: "verify", goal: "verify the package", status: "in_progress" }],
-			}), { stopReason: "toolUse" }),
-			fauxAssistantMessage("package smoke complete"),
-		]);
-		const settingsManager = SettingsManager.inMemory({
-			compaction: { enabled: false },
-			retry: { enabled: false },
-		}, { projectTrusted: true });
-		const resourceLoader = new DefaultResourceLoader({
-			cwd,
-			agentDir,
-			settingsManager,
-			additionalExtensionPaths: [join(process.cwd(), "src/sol-pi/index.ts")],
-			extensionFactories: [{ name: "package-test-provider", factory: (pi) => pi.registerProvider(faux.provider) }],
-			noExtensions: true,
-			noSkills: true,
-			noPromptTemplates: true,
-			noThemes: true,
-			noContextFiles: true,
-			systemPrompt: "You are a deterministic package integration test assistant.",
+		const mock = createMockModel({
+			id: "sol-omp-package-test",
+			provider: "sol-omp-package-test",
+			responses: [
+				{
+					content: [{
+						type: "toolCall",
+						name: "write",
+						arguments: {
+							path: "result.txt",
+							content: "package integration passed\n",
+							then_run: { command: "cat", args: ["result.txt"] },
+						},
+					}],
+				},
+				{
+					content: [{
+						type: "toolCall",
+						name: "update_plan",
+						arguments: {
+							steps: [{ id: "verify", goal: "verify the package", status: "in_progress" }],
+						},
+					}],
+				},
+				{ content: ["package smoke complete"] },
+			],
 		});
-		await resourceLoader.reload();
-		expect(resourceLoader.getExtensions().errors).toEqual([]);
+		const mockProvider: ExtensionFactory = (omp) => {
+			omp.registerProvider(mock.provider, {
+				api: mock.api,
+				apiKey: "test-only",
+				streamSimple: streamMock,
+			});
+		};
+		const settings = Settings.isolated({
+			"compaction.enabled": false,
+			"retry.enabled": false,
+		});
 		const sessionManager = SessionManager.create(cwd, join(agentDir, "sessions"));
-		({ session } = await createAgentSession({
+		const created = await createAgentSession({
 			cwd,
 			agentDir,
-			model: faux.getModel(),
+			model: mock,
 			thinkingLevel: "off",
-			resourceLoader,
+			additionalExtensionPaths: [join(process.cwd(), "src/sol-omp/index.ts")],
+			disableExtensionDiscovery: true,
+			extensions: [mockProvider],
+			skills: [],
+			rules: [],
+			contextFiles: [],
+			promptTemplates: [],
+			slashCommands: [],
+			enableMCP: false,
+			enableLsp: false,
+			skipPythonPreflight: true,
+			systemPrompt: "You are a deterministic package integration test assistant.",
 			sessionManager,
-			settingsManager,
-		}));
-		const errors: unknown[] = [];
-		await session.bindExtensions({ onError: (error) => errors.push(error) });
+			settings,
+		});
+		session = created.session;
+		const errors = created.extensionsResult.errors;
+		await initializeExtensions(session, {
+			reportSendError: (_action, error) => errors.push({ path: "runtime", error: String(error) }),
+			reportRuntimeError: (error) => errors.push({ path: error.extensionPath, error: String(error.error) }),
+		});
 		expect(session.getActiveToolNames()).toEqual(expect.arrayContaining(["edit", "write", "obs_recall", "update_plan"]));
-		const solPi = resourceLoader.getExtensions().extensions.find((extension) => extension.path.endsWith("src/sol-pi/index.ts"));
-		expect(solPi?.handlers.has("tool_result")).toBe(true);
-		expect(solPi?.handlers.has("context")).toBe(true);
-		expect(solPi?.handlers.has("agent_settled")).toBe(true);
+		const solOmp = created.extensionsResult.extensions.find((extension) =>
+			extension.resolvedPath.endsWith("src/sol-omp/index.ts")
+		);
+		expect(solOmp?.handlers.has("tool_result")).toBe(true);
+		expect(solOmp?.handlers.has("context")).toBe(true);
 
 		await session.prompt("run the package smoke test", { expandPromptTemplates: false });
+		await session.waitForIdle();
 		const toolResults = sessionManager.getBranch().flatMap((entry) =>
 			entry.type === "message" && entry.message.role === "toolResult" ? [entry.message] : [],
 		);
 		expect(toolResults).toHaveLength(2);
-		expect(toolResults.every((result) => !result.isError)).toBe(true);
+		expect(toolResults.map((result) => ({
+			toolName: result.toolName,
+			isError: result.isError,
+			text: result.content.flatMap((block) => block.type === "text" ? [block.text] : []).join("\n"),
+		}))).toEqual([
+			expect.objectContaining({ toolName: "write", isError: false }),
+			expect.objectContaining({ toolName: "update_plan", isError: false }),
+		]);
 		const writeResult = toolResults.find((result) => result.toolName === "write");
 		const observation = writeResult?.content.flatMap((block) => block.type === "text" ? [block.text] : []).join("\n");
 		expect(observation).toContain("[then_run:succeeded]");
-		expect(observation).toContain("package integration passed");
 		expect(await readFile(join(cwd, "result.txt"), "utf8")).toBe("package integration passed\n");
 		expect(session.getLastAssistantText()).toBe("package smoke complete");
-		expect(session.isIdle).toBe(true);
-		expect(faux.state.callCount).toBe(3);
+		expect(session.isStreaming).toBe(false);
+		expect(mock.calls).toHaveLength(3);
 		expect(errors).toEqual([]);
 	} finally {
 		session?.dispose();

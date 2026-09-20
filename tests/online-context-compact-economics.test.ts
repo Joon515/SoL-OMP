@@ -7,7 +7,7 @@ import {
 	DEFAULT_COMPACTION_ECONOMICS,
 	decideCompaction,
 	estimateRemainingRequests,
-} from "../src/sol-pi/extensions/online-context-compact/economics.ts";
+} from "../src/sol-omp/extensions/online-context-compact/economics.ts";
 
 function decision(overrides: Partial<Parameters<typeof decideCompaction>[0]> = {}) {
 	return decideCompaction({

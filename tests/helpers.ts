@@ -2,9 +2,10 @@
  * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: MIT
  */
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { ExtensionAPI, ExtensionContext, SessionEntry, Theme, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { Component } from "@earendil-works/pi-tui";
+import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
+import { type ExtensionAPI, type ExtensionContext, type SessionEntry, type Theme, type ToolDefinition, zod } from "@oh-my-pi/pi-coding-agent";
+import * as typebox from "@oh-my-pi/omptype/typebox";
+import type { Component } from "@oh-my-pi/pi-tui";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -111,6 +112,8 @@ export class FakeSessionManager {
 export class FakePi {
 	readonly handlers = new Map<string, Handler[]>();
 	readonly registeredTools: ToolDefinition[] = [];
+	readonly typebox = typebox;
+	readonly zod = zod;
 	readonly sentMessages: Array<{
 		message: { customType: string; content: string; display: boolean; details?: unknown };
 		options: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" } | undefined;
@@ -191,13 +194,12 @@ export function fakeContext(
 		ui: {},
 		isIdle: () => false,
 		isProjectTrusted: () => true,
-		signal: undefined,
 		abort: () => undefined,
 		hasPendingMessages: () => false,
 		shutdown: () => undefined,
 		getContextUsage: () => undefined,
-		compact: () => undefined,
-		getSystemPrompt: () => "",
+		compact: async () => undefined,
+		getSystemPrompt: () => [],
 		...overrides,
 	} as unknown as ExtensionContext;
 }

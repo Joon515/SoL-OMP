@@ -12,7 +12,7 @@ import {
 	recordCorrection,
 	recordProviderRequest,
 	restoreOnlineState,
-} from "../src/sol-pi/extensions/online-context-compact/state.ts";
+} from "../src/sol-omp/extensions/online-context-compact/state.ts";
 import { FakePi, FakeSessionManager } from "./helpers.ts";
 
 const PLAN = [

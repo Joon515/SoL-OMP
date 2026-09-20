@@ -1,100 +1,79 @@
 <p align="center">
-  <img src="assets/sol-pi-hero.png" width="100%" alt="SoL-Pi: Scaling Auto-Research Loops for Efficient Agent Harnesses" />
+  <img src="assets/sol-omp-upstream-hero.png" width="100%" alt="SoL-OMP: Scaling Auto-Research Loops for Efficient Agent Harnesses" />
 </p>
 
-# ⚡ SoL-Pi: Scaling Auto-Research Loops for Efficient Agent Harnesses
+# SoL-OMP: Scaling Auto-Research Loops for Efficient Agent Harnesses
 
 <p align="center">
   <a href="https://arxiv.org/abs/2609.20519"><img src="https://img.shields.io/badge/arXiv-2609.20519-B31B1B?logo=arxiv&amp;logoColor=white" alt="arXiv: 2609.20519" /></a>
   <a href="#getting-started"><img src="https://img.shields.io/badge/Getting%20Started-Install-76B900" alt="Getting Started" /></a>
   <a href="docs/configuration.md"><img src="https://img.shields.io/badge/Docs-Configuration-555555" alt="Configuration" /></a>
-  <a href="https://nvlabs.github.io/SoL-Pi/"><img src="https://img.shields.io/badge/Blog-SoL--Pi-76B900" alt="SoL-Pi Blog" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License" /></a>
 </p>
 
 > [!NOTE]
-> This repository contains the open-source version of SoL-Pi, a standalone extension for [Pi](https://github.com/earendil-works/pi). It is not an official distribution of Pi.
+> SoL-OMP is a community-maintained native extension for [Oh My Pi (OMP)](https://github.com/can1357/oh-my-pi). It is not maintained or endorsed by NVIDIA. This fork is derived from NVIDIA Research's MIT-licensed [NVlabs/SoL-Pi](https://github.com/NVlabs/SoL-Pi); NVIDIA attribution is retained in the license and notices.
 
-## 💡 TL;DR
+## TL;DR
 
 **Spend less without making the agent do less useful work.**
 
-SoL-Pi is a standalone extension for Pi that packages four reusable efficiency mechanisms discovered through scaled auto-research loops. It reduces repeated model turns, context replay, oversized observations, and unnecessary long-log reading while preserving the work and evidence an agent needs to finish a task.
+SoL-OMP packages four opt-in efficiency mechanisms for OMP. It reduces repeated model turns, context replay, oversized observations, and unnecessary long-log reading while preserving the work and evidence an agent needs to finish a task. It uses OMP's native extension manifest and public `@oh-my-pi/*` APIs; no OMP source patch is required.
 
-SoL-Pi installs on top of an unmodified Pi release. Every mechanism is opt-in and disabled by default.
-
-## Introduction
-
-Long-running coding agents accumulate repeated work. A file edit is often followed by a predictable validation command. Large tool results are replayed long after their first use. Completed subtasks remain in active context, and a frontier model may spend a full request reading a log when only a few lines affect the next decision.
-
-SoL-Pi grew out of a broader question from our auto-research work: before scaling agent loops, can agents first make the harness itself more efficient? The search focused on constrained efficiency: reducing token traffic, inference work, and agent turns without stopping early, skipping verification, or hiding evidence.
-
-The standalone release contains four mechanisms that survived that process. They operate at different parts of the harness and compose through Pi's public extension APIs.
-
-## What SoL-Pi Adds
+## What SoL-OMP Adds
 
 | Area | Mechanism | What changes |
 |---|---|---|
 | Tools | **Action Fusion** | An edit or write can run its follow-up validation command in the same tool call. |
 | Observations | **ObservationPack** | Repeated large text results become stable handles with exact paged recall. |
 | Delegation | **Evidence-Preserving Reducer** | Long diagnostic logs become compact receipts only when every retained quotation matches the archived source. |
-| Context | **Online Context Compact** | Completed plan steps become candidate points for Pi's native compaction, subject to economic and window-pressure checks; after a successful compaction, Pi continues the task in a new turn. |
+| Context | **Online Context Compact** | Completed plan steps become candidates for OMP's native compaction, subject to economic and window-pressure checks; after successful compaction, OMP continues the task in a new turn. |
 
 The mechanisms share four rules:
 
-- **No Pi patches.** SoL-Pi imports public Pi APIs and does not vendor the Pi source tree.
+- **No OMP patches.** SoL-OMP imports public OMP APIs and does not vendor the OMP source tree.
 - **Explicit opt-in.** A missing configuration leaves every mechanism disabled.
 - **Preserve evidence.** Original observations remain available locally, and reducer failures leave the original result unchanged.
-- **Use Pi's runtime choices.** Authentication, provider URLs, the main model, and shell behavior remain under Pi's control.
+- **Use OMP's runtime choices.** Authentication, provider URLs, the main model, and shell behavior remain under OMP's control.
 
-## Technical Details and Core Insights
+## Paper and Upstream
 
-Read the [SoL-Pi blog](https://nvlabs.github.io/SoL-Pi/) for a deeper look at the technical details, design rationale, and core insights behind SoL-Pi, including how auto-research led to the four efficiency mechanisms and how they work.
-
-## Paper
-
-Read our paper: [SoL-Pi: Recursively Scaling Auto-Research Loops for Efficient Agent Harness](https://arxiv.org/abs/2609.20519).
+This project is an OMP-native fork of [NVlabs/SoL-Pi](https://github.com/NVlabs/SoL-Pi), released under the MIT license. The research and original implementation are described in [SoL-Pi: Recursively Scaling Auto-Research Loops for Efficient Agent Harness](https://arxiv.org/abs/2609.20519). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for retained attribution.
 
 ## Getting Started
 
 ### Requirements
 
 - Node.js 22.19 or newer
-- npm
-- `@earendil-works/pi-coding-agent` 0.85.1
+- OMP 18.2.6
+
+Install the tested OMP release if it is not already available. Follow the
+[official OMP installation instructions](https://github.com/can1357/oh-my-pi);
+the resulting `omp --version` must report `18.2.6`.
 
 ### Install
 
-Install the tested Pi release:
+Replace `<your-github-username>` with the GitHub owner of the SoL-OMP repository you intend to trust, then install it through OMP's plugin manager:
 
 ```bash
-npm install --global @earendil-works/pi-coding-agent@0.85.1
+omp plugin install git:github.com/<your-github-username>/SoL-OMP
 ```
 
-Then install SoL-Pi directly from [NVlabs/SoL-Pi](https://github.com/NVlabs/SoL-Pi):
-
-```bash
-pi install git:github.com/NVlabs/SoL-Pi
-```
-
-To install it only for the current project, use the project-local scope:
-
-```bash
-pi install git:github.com/NVlabs/SoL-Pi --local --approve
-```
+The package is named `sol-omp` and exposes `./src/sol-omp/index.ts` through the `omp.extensions` manifest field. Restart OMP after installation so it loads the extension.
 
 ### Configure
 
-SoL-Pi uses a single effective configuration. With the official Pi distribution, it looks for a `sol-pi.json` file in the following locations, in order:
+SoL-OMP reads one effective `sol-omp.json` file, in this order:
 
-1. `.pi/sol-pi.json` in the current project, if the project is trusted and the file exists;
-2. `~/.pi/agent/sol-pi.json` otherwise.
+1. `<project>/.omp/sol-omp.json`, when OMP trusts the project and the file exists;
+2. `<OMP agent directory>/sol-omp.json`, normally the user-wide OMP agent directory;
+3. built-in defaults when neither file exists.
 
-If neither file exists, SoL-Pi uses its built-in defaults. The project-level configuration takes precedence over the user-level configuration; the two files are not merged.
+The project file replaces the user file; the two are not merged. Every feature defaults to `false`. For example, this conservative project configuration enables the two local mechanisms that make no additional model calls:
 
-The following conservative configuration enables only the two local mechanisms that make no additional model calls and do not stop an active run:
-
-```json
+```bash
+mkdir -p .omp
+cat > .omp/sol-omp.json <<'JSON'
 {
   "version": 1,
   "actionFusion": true,
@@ -103,70 +82,51 @@ The following conservative configuration enables only the two local mechanisms t
   "onlineContextCompact": false,
   "cacheWriteReadRatio": 12.5
 }
+JSON
 ```
 
-Enable additional mechanisms only after reviewing their configuration and security implications. SoL-Pi uses no dedicated environment variables; feature flags, the reducer provider/model route, and the compaction ratio are configured in `sol-pi.json`. See [sol-pi.example.json](sol-pi.example.json) for a template listing every key.
-
-For the complete schema, see [Configuration](docs/configuration.md). Coding agents and automated environments should follow the canonical [agent installation and configuration protocol](agents-install.md), which describes an all-enabled configuration checked with `scripts/check-sol-pi-config.mjs --require-all-enabled`.
+To configure all four mechanisms, start from [sol-omp.example.json](sol-omp.example.json), enable the additional flags, and select the reducer provider/model if needed. Never put credentials in this file: the reducer uses OMP-managed authentication. See [Configuration](docs/configuration.md) for the complete schema and trust behavior.
 
 ## Storage and Security
 
 ObservationPack and Evidence-Preserving Reducer store session-specific archives under:
 
 ```text
-<session-directory>/sol-pi/<session-id>/
+<OMP session directory>/sol-omp/<session-id>/
 ├── observation-pack/
 └── evidence-preserving-reducer/
 ```
 
-They archive eligible source material in this directory. The archived copies remain local and are not automatically deleted when the Pi session ends.
-
-Online Context Compact stores its state in Pi's session log. After a successful compaction, it starts a new turn and automatically continues the active task. Cancelling the run or exiting Pi does not trigger automatic continuation.
-
-Evidence-Preserving Reducer may send eligible diagnostic-log content to its configured reducer model using Pi-managed authentication. Review [SECURITY.md](SECURITY.md) before enabling it. Do not enable remote reduction for logs that must remain local.
+Archived copies remain local and are not automatically deleted when an OMP session ends. Online Context Compact stores state in OMP's session log. Evidence-Preserving Reducer may send eligible diagnostic-log content to its configured reducer model using OMP-managed authentication. Review [SECURITY.md](SECURITY.md) before enabling it; do not enable remote reduction for logs that must remain local.
 
 ## Documentation
 
 | Document | Purpose |
 |---|---|
 | [Configuration](docs/configuration.md) | Config search order, schema, defaults, and trust behavior |
-| [Compatibility](docs/compatibility.md) | Supported Pi APIs and standalone integration details |
+| [Compatibility](docs/compatibility.md) | OMP 18.2.6 support and native extension integration |
 | [Security](SECURITY.md) | Local storage, remote reduction, and sensitive behavior |
 | [Agent installation](agents-install.md) | Reproducible installation and all-enabled validation procedure |
 
 ## Development
 
-Install from the lockfile and run the complete source checks:
+Install from the lockfile and run the repository checks:
 
 ```bash
-npm ci --ignore-scripts
-npm run check
-npm audit --audit-level=high
-node scripts/check-pi-compat.mjs
+bun install --frozen-lockfile --ignore-scripts
+bun run check
+bun audit --audit-level=high
+bun scripts/check-sol-omp-compat.mjs
 ```
 
-`npm run check` covers TypeScript, the complete test suite, and package inspection. The development dependency set is pinned to Pi 0.85.1; runtime Pi packages remain peer dependencies so Pi owns their installation and upgrades.
+The development dependencies are pinned to OMP 18.2.6. Runtime `@oh-my-pi/*` packages remain peer dependencies so OMP owns their installation and upgrades.
 
 ## Project Status
 
-SoL-Pi is developed and maintained by NVIDIA as a standalone extension for Pi.
+SoL-OMP is a community-maintained OMP port derived from NVlabs/SoL-Pi. NVIDIA Research created and released the upstream project under the MIT license, but NVIDIA does not maintain or endorse this fork.
 
-We welcome tested, Pi-compatible extension PRs that improve token efficiency and reduce token cost. Our team will help benchmark contributions, publish results on a regular reporting cycle, and credit authors of accepted PRs as Contributors. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
-
-## Acknowledgements
-
-SoL-Pi builds on the public extension interfaces provided by [Pi](https://github.com/earendil-works/pi). Pi remains an independent upstream project and is not vendored into this repository.
+Contributions should target OMP's public extension APIs and preserve the evidence and opt-in guarantees described above. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-SoL-Pi is released under the [MIT License](LICENSE).
-
-## Star History
-
-<a href="https://www.star-history.com/?repos=NVlabs%2FSoL-Pi&amp;type=date">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/NVlabs/SoL-Pi/star-history/star-history-dark.svg" />
-    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/NVlabs/SoL-Pi/star-history/star-history-light.svg" />
-    <img alt="SoL-Pi star history chart" src="https://raw.githubusercontent.com/NVlabs/SoL-Pi/star-history/star-history-light.svg" width="100%" />
-  </picture>
-</a>
+SoL-OMP is distributed under the [MIT License](LICENSE), with upstream NVIDIA copyright and attribution retained.

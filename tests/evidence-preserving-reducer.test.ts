@@ -7,21 +7,21 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative } from "node:path";
-import type { AssistantMessage, Context, Model } from "@earendil-works/pi-ai";
-import type { ExtensionContext, ToolResultEvent } from "@earendil-works/pi-coding-agent";
+import type { AssistantMessage, Context, Model } from "@oh-my-pi/pi-ai";
+import type { ExtensionContext, ToolResultEvent } from "@oh-my-pi/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	createEvidencePreservingReducerExtension,
 	DIAGNOSTIC_COMMAND,
 	loadReducerConfig,
 	REDUCER_RECEIPT_SCHEMA,
-} from "../src/sol-pi/extensions/evidence-preserving-reducer/index.ts";
-import { archiveBody } from "../src/sol-pi/extensions/evidence-preserving-reducer/archive.ts";
+} from "../src/sol-omp/extensions/evidence-preserving-reducer/index.ts";
+import { archiveBody } from "../src/sol-omp/extensions/evidence-preserving-reducer/archive.ts";
 import {
 	callReducer,
-	type CompatComplete,
-} from "../src/sol-pi/extensions/evidence-preserving-reducer/provider.ts";
-import { runtimeRoot } from "../src/sol-pi/runtime-paths.ts";
+	type ReducerComplete,
+} from "../src/sol-omp/extensions/evidence-preserving-reducer/provider.ts";
+import { runtimeRoot } from "../src/sol-omp/runtime-paths.ts";
 import { FakePi, FakeSessionManager, fakeContext } from "./helpers.ts";
 
 const cleanupPaths: string[] = [];
@@ -37,7 +37,7 @@ const ACTIVE_MODEL = {
 	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 	contextWindow: 200_000,
 	maxTokens: 16_384,
-} satisfies Model<"openai-responses">;
+} as unknown as Model<"openai-responses">;
 
 const REDUCER_MODEL = {
 	id: ["gpt-5.6", "luna"].join("-"),
@@ -50,13 +50,9 @@ const REDUCER_MODEL = {
 	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 	contextWindow: 32_768,
 	maxTokens: 4_096,
-} satisfies Model<"openai-responses">;
+} as unknown as Model<"openai-responses">;
 
-type Complete = (
-	model: Model<string>,
-	context: Context,
-	options?: Record<string, unknown>,
-) => Promise<AssistantMessage>;
+type Complete = ReducerComplete;
 
 interface ModelReceipt {
 	schema: string;
@@ -68,8 +64,8 @@ interface ModelReceipt {
 
 interface CapturedCall {
 	readonly context: Context;
-	readonly model: Model<string>;
-	readonly options: Record<string, unknown>;
+	readonly model: Model;
+	readonly options: NonNullable<Parameters<ReducerComplete>[2]>;
 }
 
 afterEach(async () => {
@@ -162,20 +158,26 @@ function modelComplete(
 function load(
 	root: string,
 	complete: Complete,
-	model: Model<string> | null = ACTIVE_MODEL,
+	model: Model | null = ACTIVE_MODEL,
 	overrides: Partial<ExtensionContext> = {},
 ): { context: ExtensionContext; manager: FakeSessionManager; pi: FakePi } {
 	const manager = new FakeSessionManager([], "reducer", root);
 	const pi = new FakePi(manager);
-	createEvidencePreservingReducerExtension()(pi.asExtensionApi());
+	createEvidencePreservingReducerExtension({ complete })(pi.asExtensionApi());
 	const context = fakeContext(manager, {
 		model: model ?? undefined,
-		modelRegistry: {
-			find: (provider: string, modelId: string) =>
-				provider === REDUCER_MODEL.provider && modelId === REDUCER_MODEL.id ? REDUCER_MODEL : undefined,
-			complete,
-		} as unknown as ExtensionContext["modelRegistry"],
 		...overrides,
+		models:
+			overrides.models ??
+			({
+				resolve: (spec: string) =>
+					spec === `${REDUCER_MODEL.provider}/${REDUCER_MODEL.id}` ? REDUCER_MODEL : undefined,
+			} as unknown as ExtensionContext["models"]),
+		modelRegistry:
+			overrides.modelRegistry ??
+			({
+				resolver: () => async () => "test-key",
+			} as unknown as ExtensionContext["modelRegistry"]),
 	});
 	return { context, manager, pi };
 }
@@ -187,7 +189,7 @@ describe("evidence-preserving reducer", () => {
 		expect(pi.handlers.get("tool_result")).toHaveLength(1);
 	});
 
-	it("keeps the SoL-Pi identifiers that are written to disk", async () => {
+	it("keeps the SoL-OMP identifiers that are written to disk", async () => {
 		const root = await storeRoot();
 		const signal = "ERROR test target failed";
 		const body = `${signal}\n${"diagnostic output\n".repeat(400)}`;
@@ -208,13 +210,13 @@ describe("evidence-preserving reducer", () => {
 		};
 
 		expect(result.content[0]?.text ?? "").toMatch(/^sol_pi_evidence_receipt_v1\n/u);
-		expect(REDUCER_RECEIPT_SCHEMA).toBe("sol-pi-evidence-receipt/1");
+		expect(REDUCER_RECEIPT_SCHEMA).toBe("sol-omp-evidence-receipt/1");
 		expect(Object.keys(result.details)).toContain("evidencePreservingReducer");
 		expect(manager.entries.map((entry) => entry.type === "custom" && entry.customType)).toContain(
-			"sol-pi-evidence-preserving-reducer-v1",
+			"sol-omp-evidence-preserving-reducer-v1",
 		);
 		expect(
-			manager.customEntryData().every((entry) => entry.schema === "sol-pi-evidence-preserving-reducer/1"),
+			manager.customEntryData().every((entry) => entry.schema === "sol-omp-evidence-preserving-reducer/1"),
 		).toBe(true);
 	});
 
@@ -274,9 +276,9 @@ describe("evidence-preserving reducer", () => {
 		};
 
 		expect(call?.model).toBe(REDUCER_MODEL);
-		expect(call?.context.systemPrompt).toContain("lossless test/build output reducer");
+		expect(call?.context.systemPrompt?.join("\n")).toContain("You are a lossless test/build output reducer.");
 		expect(contextInput(call!.context)).toContain("<untrusted_log>");
-		expect(call?.options).toMatchObject({ cacheRetention: "none", maxTokens: 2_048, timeoutMs: 90_000 });
+		expect(call?.options).toMatchObject({ cacheRetention: "none", maxTokens: 2_048 });
 		expect(call?.options.signal).toBeInstanceOf(AbortSignal);
 		const receipt = result.content[0]?.text ?? "";
 		expect(receipt).toMatch(/status=failure/u);
@@ -297,14 +299,14 @@ describe("evidence-preserving reducer", () => {
 		expect(events.filter((entry) => entry.kind === "applied")).toHaveLength(1);
 		expect(notify).toHaveBeenCalledTimes(1);
 		expect(notify.mock.calls[0]?.[0]).toMatch(
-			/^⚡ SoL-Pi · Luna Delegating\nMoney saved · .+ removed from future prompts$/u,
+			/^⚡ SoL-OMP · Luna Delegating\nMoney saved · .+ removed from future prompts$/u,
 		);
 	});
 
-	it("uses Pi-resolved authentication on a fork-shaped model registry", async () => {
+	it("uses OMP's public model and authentication facades", async () => {
 		const root = await storeRoot();
 		const config = loadReducerConfig(join(root, "session-runtime"));
-		const body = `ERROR fork compatibility\n${"diagnostic\n".repeat(400)}`;
+		const body = `ERROR OMP compatibility\n${"diagnostic\n".repeat(400)}`;
 		const archive = await archiveBody(config.storeRoot, body);
 		let call: CapturedCall | undefined;
 		const completion = modelComplete(
@@ -314,28 +316,29 @@ describe("evidence-preserving reducer", () => {
 				source_sha256: sourceHash(input),
 				status: "failure",
 				uncertain: false,
-				evidence: [{ kind: "failure", quote: "ERROR fork compatibility" }],
+				evidence: [{ kind: "failure", quote: "ERROR OMP compatibility" }],
 			}),
 			"stop",
 			(value) => {
 				call = value;
 			},
-		) as CompatComplete;
-		let authModel: Model<string> | undefined;
-		const context = fakeContext(new FakeSessionManager([], "fork-session", root), {
+		);
+		let resolvedSpec: string | undefined;
+		let authModel: Model | undefined;
+		let authSessionId: string | undefined;
+		const context = fakeContext(new FakeSessionManager([], "omp-session", root), {
 			model: ACTIVE_MODEL,
+			models: {
+				resolve: (spec: string) => {
+					resolvedSpec = spec;
+					return spec === `${REDUCER_MODEL.provider}/${REDUCER_MODEL.id}` ? REDUCER_MODEL : undefined;
+				},
+			} as unknown as ExtensionContext["models"],
 			modelRegistry: {
-				find: (provider: string, modelId: string) =>
-					provider === REDUCER_MODEL.provider && modelId === REDUCER_MODEL.id ? REDUCER_MODEL : undefined,
-				getApiKeyAndHeaders: async (model: Model<string>) => {
+				resolver: (model: Model, sessionId?: string) => {
 					authModel = model;
-					return {
-					ok: true,
-					apiKey: "fork-test-key",
-					headers: { "x-test-header": "fork" },
-					env: { TEST_REGION: "test" },
-					baseUrl: "https://fork.example.invalid/v1",
-					};
+					authSessionId = sessionId;
+					return async () => "omp-test-key";
 				},
 			} as unknown as ExtensionContext["modelRegistry"],
 		});
@@ -343,12 +346,13 @@ describe("evidence-preserving reducer", () => {
 		const result = await callReducer(config, "pytest -q", true, archive, body, context, completion);
 
 		expect(result.ok).toBe(true);
+		expect(resolvedSpec).toBe(`${REDUCER_MODEL.provider}/${REDUCER_MODEL.id}`);
 		expect(authModel).toBe(REDUCER_MODEL);
-		expect(call?.model.baseUrl).toBe("https://fork.example.invalid/v1");
+		expect(authSessionId).toBe("omp-session");
+		expect(call?.model).toBe(REDUCER_MODEL);
 		expect(call?.options).toMatchObject({
-			apiKey: "fork-test-key",
-			headers: { "x-test-header": "fork" },
-			env: { TEST_REGION: "test" },
+			apiKey: expect.any(Function),
+			cacheRetention: "none",
 		});
 	});
 
@@ -443,13 +447,9 @@ describe("evidence-preserving reducer", () => {
 			},
 			ACTIVE_MODEL,
 			{
-				modelRegistry: {
-					find: () => undefined,
-					complete: async () => {
-						calls++;
-						throw new Error("unexpected model call");
-					},
-				} as unknown as ExtensionContext["modelRegistry"],
+				models: {
+					resolve: () => undefined,
+				} as unknown as ExtensionContext["models"],
 			},
 		);
 
@@ -462,17 +462,18 @@ describe("evidence-preserving reducer", () => {
 
 	it("fails open when Pi has no persistent session directory", async () => {
 		const manager = new FakeSessionManager([], "ephemeral-session", "");
+		manager.sessionFile = undefined;
 		const pi = new FakePi(manager);
 		createEvidencePreservingReducerExtension()(pi.asExtensionApi());
 		let calls = 0;
 		const context = fakeContext(manager, {
 			model: ACTIVE_MODEL,
-			modelRegistry: {
-				complete: async () => {
+			models: {
+				resolve: () => {
 					calls++;
-					throw new Error("unexpected model call");
+					return REDUCER_MODEL;
 				},
-			} as unknown as ExtensionContext["modelRegistry"],
+			} as unknown as ExtensionContext["models"],
 		});
 		const body = `ERROR no session storage\n${"x".repeat(5000)}`;
 

@@ -2,8 +2,8 @@
  * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: MIT
  */
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { CompactOptions, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
+import type { CompactOptions, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import {
 	BOUNDARY_COMPACTION_INSTRUCTIONS,
@@ -12,8 +12,8 @@ import {
 	POST_COMPACTION_PLAN_REMINDER,
 	registerOnlineContextCompact,
 	resolveKeepRecentTokens,
-} from "../src/sol-pi/extensions/online-context-compact/index.ts";
-import { restoreOnlineState } from "../src/sol-pi/extensions/online-context-compact/state.ts";
+} from "../src/sol-omp/extensions/online-context-compact/index.ts";
+import { restoreOnlineState } from "../src/sol-omp/extensions/online-context-compact/state.ts";
 import { FakePi, FakeSessionManager, fakeContext } from "./helpers.ts";
 
 const OPEN = [{ id: "build", goal: "build it", status: "in_progress" }] as const;
@@ -61,14 +61,13 @@ describe("Online Context Compact extension", () => {
 		registerOnlineContextCompact(pi.asExtensionApi());
 		expect(pi.registeredTools.map((tool) => tool.name)).toEqual(["update_plan"]);
 		expect([...pi.handlers.keys()].sort()).toEqual([
-			"agent_settled",
 			"before_provider_request",
 			"context",
 			"input",
-			"session_before_tree",
 			"session_compact",
 			"session_shutdown",
 			"session_start",
+			"session_stop",
 			"session_tree",
 			"turn_end",
 		]);
@@ -89,58 +88,45 @@ describe("Online Context Compact extension", () => {
 		expect(await pi.emitContext(messages, context)).toEqual(messages);
 	});
 
-	it("stops at an eligible completed-step boundary, then compacts after settlement", async () => {
+	it("stops at an eligible completed-step boundary, then compacts and requests exactly one continuation", async () => {
 		const manager = new FakeSessionManager();
 		manager.appendMessage({ role: "user", content: `old ${"x".repeat(2_000)}`, timestamp: Date.now() });
 		manager.appendMessage(assistant(`work ${"y".repeat(2_000)}`));
 		const pi = new FakePi(manager);
 		createOnlineContextCompactExtension({ cacheWriteReadRatio: 12.5, keepRecentTokens: 1 })(pi.asExtensionApi());
-		let idle = true;
-		const sendMessage = pi.sendMessage.bind(pi);
-		vi.spyOn(pi, "sendMessage").mockImplementation((message, options) => {
-			idle = false;
-			sendMessage(message, options);
-		});
 		const abort = vi.fn();
 		const compactCalls: CompactOptions[] = [];
-		let finishCompaction!: () => void;
-		const compactionGate = new Promise<void>((resolve) => {
-			finishCompaction = resolve;
-		});
 		let context: ExtensionContext;
-		const compact = (options: CompactOptions = {}): void => {
+		const compact = async (options: string | CompactOptions = {}): Promise<void> => {
+			if (typeof options === "string") throw new Error("expected compact options");
 			compactCalls.push(options);
-			void compactionGate.then(() => pi
-				.emit(
-					"session_compact",
-					{
-						type: "session_compact",
-						fromExtension: false,
-						reason: "manual",
-						willRetry: false,
-						compactionEntry: {
-							type: "compaction",
-							id: "compact-1",
-							parentId: manager.getLeafId(),
-							timestamp: new Date().toISOString(),
-							summary: "summary",
-							firstKeptEntryId: manager.entries.at(-1)?.id ?? "message-1",
-							tokensBefore: 195_000,
-						},
+			await pi.emit(
+				"session_compact",
+				{
+					type: "session_compact",
+					fromExtension: false,
+					compactionEntry: {
+						type: "compaction",
+						id: "compact-1",
+						parentId: manager.getLeafId(),
+						timestamp: new Date().toISOString(),
+						summary: "summary",
+						firstKeptEntryId: manager.entries.at(-1)?.id ?? "message-1",
+						tokensBefore: 195_000,
 					},
-					context,
-				))
-				.then(() => options.onComplete?.({
-					summary: "summary",
-					firstKeptEntryId: manager.entries.at(-1)?.id ?? "message-1",
-					tokensBefore: 195_000,
-				}));
+				},
+				context,
+			);
+			options.onComplete?.({
+				summary: "summary",
+				firstKeptEntryId: manager.entries.at(-1)?.id ?? "message-1",
+				tokensBefore: 195_000,
+			});
 		};
 		context = fakeContext(manager, {
 			abort,
 			compact,
-			isIdle: () => idle,
-			getSystemPrompt: () => "test prompt",
+			getSystemPrompt: () => ["test prompt"],
 			getContextUsage: () => ({ tokens: 195_000, contextWindow: 200_000, percent: 97.5 }),
 		});
 
@@ -149,7 +135,6 @@ describe("Online Context Compact extension", () => {
 		await pi.emit("before_provider_request", { type: "before_provider_request", payload: {} }, context);
 		await runPlan(pi, context, "plan-open", { steps: OPEN });
 		const planResult = await runPlan(pi, context, "plan-done", { steps: DONE, progress: PROGRESS });
-
 		await pi.emit(
 			"turn_end",
 			{
@@ -174,40 +159,94 @@ describe("Online Context Compact extension", () => {
 		expect(abort).toHaveBeenCalledOnce();
 		expect(compactCalls).toEqual([]);
 
-		idle = false;
-		await pi.emit("agent_settled", { type: "agent_settled" }, context);
-		expect(compactCalls).toEqual([]);
-
-		idle = true;
-		let firstSettlementFinished = false;
-		const firstSettlement = pi.emit("agent_settled", { type: "agent_settled" }, context).then(() => {
-			firstSettlementFinished = true;
-		});
-		await vi.waitFor(() => expect(compactCalls).toHaveLength(1));
-		expect(await pi.emit("session_before_tree", { type: "session_before_tree" }, context)).toEqual({ cancel: true });
-		finishCompaction();
-		await vi.waitFor(() => expect(pi.sentMessages).toHaveLength(1));
-
-		expect(compactCalls).toHaveLength(1);
-		expect(compactCalls[0]?.customInstructions).toBe(BOUNDARY_COMPACTION_INSTRUCTIONS);
-		expect(firstSettlementFinished).toBe(false);
-		expect(pi.sentMessages).toEqual([
+		const stop = await pi.emit(
+			"session_stop",
 			{
-				message: {
-					customType: "sol-pi-online-context-compact",
-					content: POST_COMPACTION_PLAN_REMINDER,
-					display: false,
-				},
-				options: { triggerTurn: true },
+				type: "session_stop",
+				messages: [],
+				turn_id: 1,
+				session_id: "session-a",
+				stop_hook_active: false,
+				signal: new AbortController().signal,
 			},
-		]);
-
-		idle = true;
-		await pi.emit("agent_settled", { type: "agent_settled" }, context);
-		await firstSettlement;
-		expect(firstSettlementFinished).toBe(true);
-		expect(await pi.emit("session_before_tree", { type: "session_before_tree" }, context)).toBeUndefined();
+			context,
+		);
+		expect(compactCalls).toHaveLength(1);
+		expect(compactCalls[0]).toMatchObject({
+			internalGuidance: BOUNDARY_COMPACTION_INSTRUCTIONS,
+			suppressContinuation: true,
+		});
+		expect(stop).toEqual({ continue: true, additionalContext: POST_COMPACTION_PLAN_REMINDER });
+		expect(
+			await pi.emit(
+				"session_stop",
+				{
+					type: "session_stop",
+					messages: [],
+					turn_id: 2,
+					session_id: "session-a",
+					stop_hook_active: false,
+					signal: new AbortController().signal,
+				},
+				context,
+			),
+		).toBeUndefined();
 		expect(restoreOnlineState(manager.entries)).toMatchObject({ nativeCompactionCount: 1, pendingProgress: [] });
+	});
+
+	it("does not continue when compaction is cancelled", async () => {
+		const manager = new FakeSessionManager();
+		manager.appendMessage({ role: "user", content: `old ${"x".repeat(2_000)}`, timestamp: Date.now() });
+		manager.appendMessage(assistant(`work ${"y".repeat(2_000)}`));
+		const pi = new FakePi(manager);
+		createOnlineContextCompactExtension({ cacheWriteReadRatio: 0, keepRecentTokens: 1 })(pi.asExtensionApi());
+		const context = fakeContext(manager, {
+			compact: async () => {
+				throw new DOMException("cancelled", "AbortError");
+			},
+			getSystemPrompt: () => ["test prompt"],
+			getContextUsage: () => ({ tokens: 195_000, contextWindow: 200_000, percent: 97.5 }),
+		});
+
+		await pi.emit("session_start", { type: "session_start" }, context);
+		await pi.emitContext(buildSessionMessages(), context);
+		await pi.emit("before_provider_request", { type: "before_provider_request", payload: {} }, context);
+		await runPlan(pi, context, "plan-open", { steps: OPEN });
+		await runPlan(pi, context, "plan-done", { steps: DONE, progress: PROGRESS });
+		await pi.emit(
+			"turn_end",
+			{
+				type: "turn_end",
+				turnIndex: 1,
+				message: assistant("boundary"),
+				toolResults: [
+					{
+						role: "toolResult",
+						toolCallId: "plan-done",
+						toolName: "update_plan",
+						content: [{ type: "text", text: "done" }],
+						isError: false,
+						timestamp: Date.now(),
+					},
+				],
+			},
+			context,
+		);
+
+		expect(
+			await pi.emit(
+				"session_stop",
+				{
+					type: "session_stop",
+					messages: [],
+					turn_id: 1,
+					session_id: "session-a",
+					stop_hook_active: false,
+					signal: new AbortController().signal,
+				},
+				context,
+			),
+		).toBeUndefined();
 	});
 });
 

@@ -8,7 +8,7 @@ import {
 	formatPlanSnapshot,
 	parsePlanSteps,
 	type PlanStep,
-} from "../src/sol-pi/extensions/online-context-compact/index.ts";
+} from "../src/sol-omp/extensions/online-context-compact/index.ts";
 
 const OPEN = [{ id: "build", goal: "build it", status: "in_progress" }] as const satisfies readonly PlanStep[];
 const DONE = [{ id: "build", goal: "build it", status: "completed" }] as const satisfies readonly PlanStep[];
@@ -42,7 +42,7 @@ describe("Online Context Compact plans", () => {
 
 	it("formats a compact progress-only snapshot", () => {
 		const snapshot = formatPlanSnapshot(OPEN);
-		expect(snapshot).toContain('<sol-pi-plan task_status="active">');
+		expect(snapshot).toContain('<sol-omp-plan task_status="active">');
 		expect(snapshot).toContain(JSON.stringify({ steps: OPEN }));
 	});
 });

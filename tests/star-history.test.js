@@ -9,7 +9,7 @@ import { fetchStarHistory, toDailyPoints } from "../scripts/update-star-history.
 const sunday = Date.parse("2026-09-06T00:00:00Z") / 1000;
 const week = (start = sunday, days = [0, 0, 1, 7, 587, 290, 0]) => ({ week: start, total: days.reduce((a, b) => a + b, 0), days });
 const snapshot = (weeks = [week()]) => ({
-	repository: "NVlabs/SoL-Pi", fetchedAt: "2026-09-11T14:00:00.000Z", currentStars: 880, weeks,
+	repository: "example/SoL-OMP", fetchedAt: "2026-09-11T14:00:00.000Z", currentStars: 880, weeks,
 });
 
 describe("star history generation", () => {
@@ -46,21 +46,21 @@ describe("star history generation", () => {
 				: url.includes("page=2") ? [week(sunday - 30 * 7 * 86400)] : { count: 900 };
 			return Response.json(body);
 		};
-		const result = await fetchStarHistory("NVlabs/SoL-Pi", { fetcher });
+		const result = await fetchStarHistory("example/SoL-OMP", { fetcher });
 		expect(result.weeks).toHaveLength(31);
 		expect(result.currentStars).toBe(900);
 		expect(urls).toHaveLength(3);
-		expect(urls.at(-1)).toBe("https://api.github.com/repos/NVlabs/SoL-Pi/stargazers/count");
+		expect(urls.at(-1)).toBe("https://api.github.com/repos/example/SoL-OMP/stargazers/count");
 	});
 
 	it("fails on HTTP or schema errors instead of producing a blank success", async () => {
-		await expect(fetchStarHistory("NVlabs/SoL-Pi", {
+		await expect(fetchStarHistory("example/SoL-OMP", {
 			fetcher: async () => new Response("unavailable", { status: 503 }),
 		})).rejects.toThrow("HTTP 503");
-		await expect(fetchStarHistory("NVlabs/SoL-Pi", {
+		await expect(fetchStarHistory("example/SoL-OMP", {
 			fetcher: async () => Response.json({ message: "invalid history" }),
 		})).rejects.toThrow("Invalid GitHub history page");
-		await expect(fetchStarHistory("NVlabs/SoL-Pi", {
+		await expect(fetchStarHistory("example/SoL-OMP", {
 			fetcher: async (url) => Response.json(url.endsWith("/count") ? { count: -1 } : []),
 		})).rejects.toThrow("Invalid GitHub star count");
 	});

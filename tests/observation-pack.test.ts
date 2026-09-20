@@ -6,14 +6,14 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { ToolResultMessage } from "@earendil-works/pi-ai";
+import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
+import type { ToolResultMessage } from "@oh-my-pi/pi-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	createObservationPackExtension,
 	FULL_SENDS,
 	THRESHOLD_BYTES,
-} from "../src/sol-pi/extensions/observation-pack/index.ts";
+} from "../src/sol-omp/extensions/observation-pack/index.ts";
 import { componentText, FakePi, FakeSessionManager, fakeContext, plainTheme } from "./helpers.ts";
 
 const roots: string[] = [];
@@ -65,11 +65,11 @@ function observationId(message: ToolResultMessage): string {
 }
 
 function observationPath(sessionDir: string, id: string): string {
-	return join(sessionDir, "sol-pi", SESSION_ID, "observation-pack", "objects", `${id}.txt`);
+	return join(sessionDir, "sol-omp", SESSION_ID, "observation-pack", "objects", `${id}.txt`);
 }
 
 function observationObjectsDirectory(sessionDir: string): string {
-	return join(sessionDir, "sol-pi", SESSION_ID, "observation-pack", "objects");
+	return join(sessionDir, "sol-omp", SESSION_ID, "observation-pack", "objects");
 }
 
 async function project(pi: FakePi, message: ToolResultMessage, sessionDir: string, count: number): Promise<string[]> {
@@ -101,9 +101,9 @@ describe("observation pack", () => {
 	it("renders observation recall as an English lightning savings call", () => {
 		const recall = observationPackPi().tool("obs_recall");
 		const args = { id: "obs_0123456789abcdef01234567", offset: 0 };
-		const rendered = recall.renderCall!(args, plainTheme, { args, cwd: process.cwd() } as never);
+		const rendered = recall.renderCall!(args, { expanded: false, isPartial: false }, plainTheme);
 
-		expect(componentText(rendered)).toContain("⚡ SoL-Pi · Observation Pack");
+		expect(componentText(rendered)).toContain("⚡ SoL-OMP · Observation Pack");
 		expect(componentText(rendered)).toContain("Money saved");
 	});
 
@@ -149,7 +149,7 @@ describe("observation pack", () => {
 
 		expect(notify).toHaveBeenCalledTimes(1);
 		expect(notify.mock.calls[0]?.[0]).toMatch(
-			/^⚡ SoL-Pi · Observation Pack\nMoney saved · [\d,]+ context tokens avoided$/u,
+			/^⚡ SoL-OMP · Observation Pack\nMoney saved · [\d,]+ context tokens avoided$/u,
 		);
 	});
 
@@ -168,8 +168,8 @@ describe("observation pack", () => {
 			expect(resultText((await pi.emitContext([message], context))[0]!)).toMatch(/^\[large tool result replaced/u);
 		}
 
-		expect(await readFile(join(sessionDir, "sol-pi", "session-a", "observation-pack", "objects", `${id}.txt`), "utf8")).toBe(body);
-		expect(await readFile(join(sessionDir, "sol-pi", "session-b", "observation-pack", "objects", `${id}.txt`), "utf8")).toBe(body);
+		expect(await readFile(join(sessionDir, "sol-omp", "session-a", "observation-pack", "objects", `${id}.txt`), "utf8")).toBe(body);
+		expect(await readFile(join(sessionDir, "sol-omp", "session-b", "observation-pack", "objects", `${id}.txt`), "utf8")).toBe(body);
 	});
 
 	it("breaks the prefix once per observation without remutating older placeholders", async () => {
@@ -288,7 +288,7 @@ describe("observation pack", () => {
 	it("fails storage closed when the observation directory is a symlink", async () => {
 		const sessionDir = await sessionRoot();
 		const targetDir = await sessionRoot();
-		await mkdir(join(sessionDir, "sol-pi", SESSION_ID, "observation-pack"), { recursive: true });
+		await mkdir(join(sessionDir, "sol-omp", SESSION_ID, "observation-pack"), { recursive: true });
 		await symlink(targetDir, observationObjectsDirectory(sessionDir), "dir");
 		const body = `directory guard\n${repeatPastThreshold("must not escape\n")}`;
 		const message = toolResult(body);

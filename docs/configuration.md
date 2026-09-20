@@ -1,16 +1,27 @@
 # Configuration
 
-SoL-Pi reads one effective JSON configuration file at extension startup. It uses Pi's public `CONFIG_DIR_NAME` and `getAgentDir()` APIs rather than assuming fixed directories.
+SoL-OMP reads one effective JSON configuration file when its OMP extension starts. Configuration belongs to the `sol-omp` package; provider credentials and the main agent model remain OMP settings.
 
 ## Search order
 
-1. `<working-directory>/<Pi config directory>/sol-pi.json`, only after Pi marks the project trusted
-2. `<Pi agent directory>/sol-pi.json`
+1. `<working-directory>/.omp/sol-omp.json`, only when OMP marks the project trusted
+2. `<OMP agent directory>/sol-omp.json`
 3. Built-in defaults when neither file exists
 
-For the official Pi distribution, the first two locations normally resolve to `.pi/sol-pi.json` and `~/.pi/agent/sol-pi.json`.
+The OMP agent directory is the directory returned by OMP's `getAgentDir()` API. Use the directory reported by your OMP installation rather than assuming a platform-specific absolute path.
 
-The project file replaces the global file. SoL-Pi does not merge them.
+A project file replaces the user-wide file. SoL-OMP does not merge the two. Put project-specific policy in `.omp/sol-omp.json`; use the OMP agent directory for a personal default across trusted projects.
+
+## Minimal setup
+
+Create a project-local configuration from the repository root:
+
+```bash
+mkdir -p .omp
+cp sol-omp.example.json .omp/sol-omp.json
+```
+
+The example leaves all four mechanisms disabled. Edit only the mechanisms you intend to enable, then restart OMP so the extension reloads the file.
 
 ## Schema
 
@@ -27,49 +38,74 @@ The project file replaces the global file. SoL-Pi does not merge them.
 }
 ```
 
-Feature keys may be omitted and then default to `false`. `cacheWriteReadRatio` may be omitted and then defaults to `12.5`; when present it must be a finite non-negative number, and `0` explicitly means that a cache write adds no cost relative to a cache read. `evidencePreservingReducerProvider` and `evidencePreservingReducerModel` may be omitted and then use the built-in reducer route; when present each must be a non-empty string. Unknown keys, unsupported versions, malformed JSON, non-boolean feature values, invalid ratios, and invalid reducer model fields stop extension loading with a direct error.
+Feature keys may be omitted and then default to `false`. `cacheWriteReadRatio` may be omitted and defaults to `12.5`; when present it must be a finite non-negative number. A value of `0` explicitly means that a cache write adds no cost relative to a cache read.
 
-For the managed all-enabled installation described in the [agent installation and configuration protocol](../agents-install.md), validate the effective file before starting Pi:
+`evidencePreservingReducerProvider` and `evidencePreservingReducerModel` may be omitted to use the built-in reducer route. When present, each must be a non-empty string naming a model available through OMP's model registry.
 
-```bash
-node scripts/check-sol-pi-config.mjs \
-  --config /absolute/path/to/effective/sol-pi.json \
-  --require-all-enabled
-```
-
-This preflight does not make every valid SoL-Pi configuration all-enabled. Without `--require-all-enabled`, omitted feature keys retain their normal `false` defaults. The managed workflow uses the flag because its acceptance criterion is that all four mechanisms are active.
+Unknown keys, unsupported versions, malformed JSON, non-boolean feature values, invalid ratios, and invalid reducer model fields stop extension loading with a direct error.
 
 ## Feature behavior
 
-- `actionFusion`: registers SoL-Pi replacements for Pi's `edit` and `write` tools.
-- `observationPack`: registers `obs_recall` and a provider-context projection handler.
-- `evidencePreservingReducer`: registers a `tool_result` handler and delegates long diagnostic-log reduction to the configured reducer provider/model.
-- `evidencePreservingReducerProvider`: provider namespace used to resolve the reducer model through Pi's model registry.
-- `evidencePreservingReducerModel`: model id used for Evidence-Preserving Reducer.
-- `onlineContextCompact`: registers `update_plan` and boundary-driven native compaction after the other SoL-Pi context transformers.
-- `cacheWriteReadRatio`: supplies the single economic decision ratio used by Online Context Compact.
+- `actionFusion`: replaces OMP's `edit` and `write` tools with compatible definitions that can run a follow-up command in the same call.
+- `observationPack`: registers `obs_recall` and replaces repeated large provider-context observations with locally recallable handles.
+- `evidencePreservingReducer`: processes eligible long diagnostic logs and accepts reduced receipts only when their evidence matches the archived source.
+- `evidencePreservingReducerProvider`: provider namespace used to resolve the reducer model through OMP's model registry.
+- `evidencePreservingReducerModel`: model identifier used by Evidence-Preserving Reducer.
+- `onlineContextCompact`: registers `update_plan` and considers OMP native compaction at completed plan boundaries.
+- `cacheWriteReadRatio`: supplies the economic decision ratio used by Online Context Compact. It is policy input, not a cost report.
 
-## Evidence-Preserving Reducer runtime inputs
+## Example profiles
 
-The release entry supplies the run label and session-derived storage. It uses one configurable model route:
+Enable only mechanisms that stay local and make no nested model request:
 
-- **Reducer provider/model** — from `evidencePreservingReducerProvider` and `evidencePreservingReducerModel` in the effective `sol-pi.json`. If omitted, SoL-Pi uses its built-in reducer route. SoL-Pi resolves that model through Pi's model registry and still relies on Pi-managed authentication; do not put credentials in `sol-pi.json`.
+```json
+{
+  "version": 1,
+  "actionFusion": true,
+  "observationPack": true,
+  "evidencePreservingReducer": false,
+  "onlineContextCompact": false,
+  "cacheWriteReadRatio": 12.5
+}
+```
 
-## Online Context Compact runtime inputs
+Enable all mechanisms after reviewing the security implications and selecting a reducer route available in OMP:
 
-The release entry uses two runtime inputs:
+```json
+{
+  "version": 1,
+  "actionFusion": true,
+  "observationPack": true,
+  "evidencePreservingReducer": true,
+  "evidencePreservingReducerProvider": "provider-id",
+  "evidencePreservingReducerModel": "model-id",
+  "onlineContextCompact": true,
+  "cacheWriteReadRatio": 12.5
+}
+```
 
-- **Context window** — from `ExtensionContext.getContextUsage()`, used for window-pressure protection.
-- **Cache write/read ratio** — from `cacheWriteReadRatio` in the effective `sol-pi.json`. The value remains fixed for the session and is not recomputed when the model changes. It drives one runtime decision and is not a cost report.
+Validate an all-enabled effective file from a SoL-OMP checkout:
 
-The configured ratio stays fixed for the loaded extension. The mechanism stores its current plan, progress summaries, request horizon, context growth, and compaction debt as versioned custom entries in Pi's session log. After a successful compaction it sends one hidden, generic message with `triggerTurn: true`, which starts a new turn and instructs the assistant to rebuild its plan. A settlement barrier keeps print and JSON modes in the same Pi invocation until that continuation settles, so callers do not need to resume the session or inject `Continue working`. Cancelling or exiting does not schedule an automatic continuation. The mechanism creates no separate Online Context Compact files. The programmatic factory exposes only a matching retained-tail value for installations whose Pi compaction setting differs from the default.
+```bash
+node scripts/check-sol-omp-config.mjs \
+  --config /absolute/path/to/effective/sol-omp.json \
+  --require-all-enabled
+```
 
-## Pi integration
+Without `--require-all-enabled`, omitted feature keys retain their normal `false` defaults.
 
-SoL-Pi reads no dedicated environment variables. Evidence-Preserving Reducer resolves its configured reducer provider/model through `ExtensionContext.modelRegistry` and uses Pi-managed authentication. If the configured reducer model is unavailable or the nested model call fails, the original tool result continues unchanged.
+## Runtime inputs and storage
 
-SoL-Pi does not configure shell paths, command prefixes, storage paths, run IDs, provider URLs, reasoning levels, timeouts, or per-mechanism enable flags through environment variables. Apart from the EPR reducer provider/model route in `sol-pi.json`, model selection remains with Pi. Action Fusion uses Pi's default shell behavior. Persistent artifacts are derived from Pi's session directory and session ID.
+Evidence-Preserving Reducer resolves its configured provider/model through `ExtensionContext.modelRegistry` and uses OMP-managed authentication. Do not put API keys, tokens, provider URLs, or other credentials in `sol-omp.json`. If the model is unavailable or the nested model call fails, the original tool result continues unchanged.
+
+Online Context Compact reads the context window and provider-counted size from `ExtensionContext.getContextUsage()`. The configured cache ratio remains fixed for the loaded extension and is not recomputed when the main model changes. Its plan and compaction state are versioned entries in the OMP session log; it creates no separate compaction files.
+
+SoL-OMP reads no dedicated environment variables. It does not configure shell paths, command prefixes, storage paths, run IDs, provider URLs, reasoning levels, timeouts, or the main model. Action Fusion uses OMP's shell behavior. Persistent artifacts are derived from OMP's session directory and session ID:
+
+```text
+<OMP session directory>/sol-omp/<session-id>/
+```
 
 ## Trust
 
-A project-local config can enable file mutation, shell execution, local archival, and remote diagnostic-log reduction. SoL-Pi waits for Pi's `session_start` context and ignores the project file unless `ctx.isProjectTrusted()` is true. Prefer the global file when you want one personal configuration across trusted projects.
+A project-local configuration can enable file mutation, shell execution, local archival, and remote diagnostic-log reduction. SoL-OMP ignores `.omp/sol-omp.json` until OMP reports the project as trusted. Trust a project only after reviewing its configuration. Prefer the OMP agent-directory file when you want one personal configuration across trusted projects.

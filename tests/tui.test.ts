@@ -3,15 +3,15 @@
  * SPDX-License-Identifier: MIT
  */
 
-import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import type { ExtensionContext, Theme } from "@oh-my-pi/pi-coding-agent";
+import { Text } from "@oh-my-pi/pi-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	formatSavingsBytes,
 	formatSavingsCount,
-	renderSolPiTool,
-	showSolPiSavings,
-} from "../src/sol-pi/tui.ts";
+	renderSolOmpTool,
+	showSolOmpSavings,
+} from "../src/sol-omp/tui.ts";
 
 const theme = {
 	fg: (_color: string, text: string) => text,
@@ -28,13 +28,13 @@ function uiContext(mode: ExtensionContext["mode"]) {
 	};
 }
 
-describe("SoL-Pi TUI savings presentation", () => {
+describe("SoL-OMP TUI savings presentation", () => {
 	afterEach(() => {
 		vi.useRealTimers();
 	});
 
 	it("renders an English lightning header and measurable savings above the original tool component", () => {
-		const component = renderSolPiTool(
+		const component = renderSolOmpTool(
 			theme,
 			"Action Fusion",
 			"1 model round-trip avoided",
@@ -42,7 +42,7 @@ describe("SoL-Pi TUI savings presentation", () => {
 		);
 
 		expect(component.render(100).map((line) => line.trimEnd()).join("\n")).toBe(
-			"⚡ SoL-Pi · Action Fusion\nMoney saved · 1 model round-trip avoided\noriginal edit renderer",
+			"⚡ SoL-OMP · Action Fusion\nMoney saved · 1 model round-trip avoided\noriginal edit renderer",
 		);
 	});
 
@@ -55,24 +55,24 @@ describe("SoL-Pi TUI savings presentation", () => {
 		vi.useFakeTimers();
 		const { context, notify, setStatus } = uiContext("tui");
 
-		showSolPiSavings(context, "Online Context Compact", "84,026 context tokens removed");
+		showSolOmpSavings(context, "Online Context Compact", "84,026 context tokens removed");
 
 		expect(notify).toHaveBeenCalledWith(
-			"⚡ SoL-Pi · Online Context Compact\nMoney saved · 84,026 context tokens removed",
+			"⚡ SoL-OMP · Online Context Compact\nMoney saved · 84,026 context tokens removed",
 			"info",
 		);
 		expect(setStatus).toHaveBeenCalledWith(
-			"sol-pi-savings",
+			"sol-omp-savings",
 			"⚡ Online Context Compact · 84,026 context tokens removed",
 		);
 		vi.advanceTimersByTime(4_000);
-		expect(setStatus).toHaveBeenLastCalledWith("sol-pi-savings", undefined);
+		expect(setStatus).toHaveBeenLastCalledWith("sol-omp-savings", undefined);
 	});
 
 	it.each(["rpc", "json", "print"] as const)("does not emit presentation in %s mode", (mode) => {
 		const { context, notify, setStatus } = uiContext(mode);
 
-		showSolPiSavings(context, "Action Fusion", "1 model round-trip avoided");
+		showSolOmpSavings(context, "Action Fusion", "1 model round-trip avoided");
 
 		expect(notify).not.toHaveBeenCalled();
 		expect(setStatus).not.toHaveBeenCalled();
