@@ -56,7 +56,7 @@ the resulting `omp --version` must report `18.2.6`.
 Replace `<your-github-username>` with the GitHub owner of the SoL-OMP repository you intend to trust, then install it through OMP's plugin manager:
 
 ```bash
-omp plugin install git:github.com/<your-github-username>/SoL-OMP
+omp plugin install git:github.com/Joon515/SoL-OMP
 ```
 
 The package is named `sol-omp` and exposes `./src/sol-omp/index.ts` through the `omp.extensions` manifest field. Restart OMP after installation so it loads the extension.
